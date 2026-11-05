@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ambigüedades de HUs · QA</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="marca">
+        <span class="logo">ARS</span>
+        <div>
+          <h1>Ambigüedades de HUs</h1>
+          <p>Consulta una HU o un sprint y obtén solo las preguntas para el negocio.</p>
+        </div>
+      </div>
+      <div class="estados">
+        <span id="estadoAzure" class="chip">Azure…</span>
+        <span id="estadoIA" class="chip">IA…</span>
+        <button id="btnConfig" class="btn secundario mini" type="button" title="Configurar IA y Azure">⚙ Configuración</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel">
+        <div class="tabs" role="tablist">
+          <button id="tabHU" class="tab activo" type="button">Por HU</button>
+          <button id="tabSprint" class="tab" type="button">Por sprint</button>
+        </div>
+
+        <section id="modoHU" class="modo">
+          <label for="huId">ID de la HU</label>
+          <div class="fila">
+            <input id="huId" type="number" min="1" placeholder="Ej. 29238" />
+            <button id="btnAnalizarHU" class="btn primario" type="button">Analizar</button>
+          </div>
+          <p class="ayuda">Se analizan la descripción y los criterios de aceptación de la HU.</p>
+        </section>
+
+        <section id="modoSprint" class="modo" hidden>
+          <label for="selProyecto">Proyecto</label>
+          <select id="selProyecto"></select>
+          <label for="selSprint">Sprint</label>
+          <select id="selSprint"></select>
+          <label for="selArea">Área (opcional)</label>
+          <select id="selArea"><option value="">Todas las áreas</option></select>
+          <button id="btnListarHUs" class="btn secundario bloque" type="button">Listar HUs</button>
+          <div id="listaHUs" class="lista-hus"></div>
+          <button id="btnAnalizarSprint" class="btn primario bloque" type="button" disabled>Analizar seleccionadas</button>
+        </section>
+
+        <div id="progreso" class="progreso" hidden>
+          <div class="barra"><i id="barraProgreso"></i></div>
+          <p id="textoProgreso"></p>
+        </div>
+        <p id="error" class="error" hidden></p>
+      </aside>
+
+      <section class="resultados">
+        <div id="vacio" class="vacio">
+          <h2>Sin análisis todavía</h2>
+          <p>Consulta una HU o lista las HUs de un sprint para ver sus ambigüedades.</p>
+        </div>
+        <div id="resumen" class="resumen" hidden></div>
+        <div id="tarjetas"></div>
+      </section>
+    </main>
+
+    <div id="modalConfig" class="modal" hidden>
+      <div class="modal-fondo" data-cerrar-config></div>
+      <form class="modal-caja" id="formConfig">
+        <header class="modal-cabecera">
+          <h2>Configuración</h2>
+          <button type="button" class="btn secundario mini" data-cerrar-config aria-label="Cerrar">✕</button>
+        </header>
+        <p class="ayuda">Se guarda solo en este navegador. Se envía al servidor en cada consulta; no se escribe en disco.</p>
+        <fieldset>
+          <legend>IA</legend>
+          <label for="iaProveedor">Proveedor</label>
+          <select id="iaProveedor">
+            <option value="gemini">Gemini (Google)</option>
+            <option value="anthropic">Claude (Anthropic)</option>
+            <option value="openai">Compatible con OpenAI (OpenCode, DeepSeek, Groq…)</option>
+          </select>
+          <label for="iaApiKey">API key</label>
+          <input id="iaApiKey" type="password" autocomplete="off" placeholder="Pega tu API key" />
+          <label for="iaModelo">Modelo (opcional)</label>
+          <input id="iaModelo" type="text" placeholder="Ej. gemini-3.7-flash / claude-sonnet-5 / deepseek-chat" />
+          <label for="iaBaseUrl">Base URL (solo compatible con OpenAI)</label>
+          <input id="iaBaseUrl" type="url" placeholder="https://api.openai.com/v1" />
+        </fieldset>
+        <fieldset>
+          <legend>Azure DevOps</legend>
+          <p class="ayuda" id="azureActual"></p>
+          <label for="azPat">Personal Access Token (PAT)</label>
+          <input id="azPat" type="password" autocomplete="off" placeholder="Pega tu PAT" />
+        </fieldset>
+        <p id="configError" class="error" hidden></p>
+        <footer class="modal-pie">
+          <button type="button" class="btn secundario" id="btnOlvidar">Olvidar</button>
+          <button type="submit" class="btn primario">Guardar</button>
+        </footer>
+      </form>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

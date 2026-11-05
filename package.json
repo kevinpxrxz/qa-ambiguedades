@@ -1,0 +1,21 @@
+{
+  "name": "qa-ambiguedades",
+  "version": "1.0.0",
+  "description": "Consulta HUs o sprints en Azure DevOps y extrae solo las ambigüedades de cada HU.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --use-system-ca server.js"
+  },
+  "engines": {
+    "node": ">=22.15"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@google/genai": "^2.25.0",
+    "docx": "^9.8.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mammoth": "^1.9.1"
+  }
+}
