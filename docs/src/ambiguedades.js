@@ -179,25 +179,84 @@ export async function analizarAmbiguedades({ texto }) {
   const mensaje = `Historia de usuario a analizar:\n\n${String(texto ?? "").trim()}`;
 
   let crudo;
-  if (ia.proveedor === "gemini") {
-    // Si el modelo elegido está saturado (503), se prueban alternativas.
-    const modelos = [...new Set([ia.modelo, "gemini-3.6-flash", "gemini-3.5-flash"].filter(Boolean))];
-    for (const modelo of modelos) {
-      try {
-        crudo = await conReintentos(() => gemini(ia, mensaje, modelo));
-        break;
-      } catch (err) {
-        if (Number(err?.status) !== 503) throw err;
+  try {
+    if (ia.proveedor === "gemini") {
+      // Si el modelo elegido está saturado (503), se prueban alternativas.
+      const modelos = [...new Set([ia.modelo, "gemini-3.6-flash", "gemini-3.5-flash"].filter(Boolean))];
+      for (const modelo of modelos) {
+        try {
+          crudo = await conReintentos(() => gemini(ia, mensaje, modelo));
+          break;
+        } catch (err) {
+          if (Number(err?.status) !== 503) throw err;
+        }
       }
+      if (!crudo) throw new Error("El modelo de Gemini está saturado (503). Cambie de modelo en ⚙ Configuración o use otro proveedor.");
+    } else if (ia.proveedor === "anthropic") {
+      crudo = await conReintentos(() => anthropic(ia, mensaje));
+    } else {
+      crudo = await conReintentos(() => openai(ia, mensaje));
     }
-    if (!crudo) throw new Error("El modelo de Gemini está saturado (503). Cambie de modelo en ⚙ Configuración o use otro proveedor.");
-  } else if (ia.proveedor === "anthropic") {
-    crudo = await conReintentos(() => anthropic(ia, mensaje));
-  } else {
-    crudo = await conReintentos(() => openai(ia, mensaje));
+  } catch (err) {
+    if (err?.name === "TypeError" || /failed to fetch|load failed|networkerror/i.test(err?.message ?? "")) {
+      const destino = ia.proveedor === "openai" ? ia.baseUrl || "https://api.openai.com/v1" : ia.proveedor === "gemini" ? "generativelanguage.googleapis.com" : "api.anthropic.com";
+      throw new Error(`No se pudo conectar con ${destino}. Revise la Base URL y que el proveedor permita llamadas desde el navegador (CORS).`);
+    }
+    throw err;
   }
 
   const datos = parsearJson(crudo);
   if (!datos) throw new Error("La IA no devolvió un JSON válido. Intente de nuevo.");
   return { datos: normalizar(datos), meta: { proveedor: ia.proveedor, modelo: ia.modelo || "" } };
+}
+
+/** Prueba la conexión con el proveedor de IA con un mensaje mínimo. */
+export async function probarIA(ia) {
+  if (!ia?.proveedor || !ia?.apiKey) throw new Error("Indique el proveedor y la API key.");
+  const mensaje = "Responde solo: OK";
+  try {
+    if (ia.proveedor === "gemini") {
+      const modelo = ia.modelo || "gemini-3.6-flash";
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(ia.apiKey)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: mensaje }] }] }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error?.message || `Gemini respondió ${r.status}.`);
+      return { modelo, texto: textoDeGemini(j) };
+    }
+    if (ia.proveedor === "anthropic") {
+      const modelo = ia.modelo || "claude-sonnet-4-5";
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ia.apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({ model: modelo, max_tokens: 20, messages: [{ role: "user", content: mensaje }] }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error?.message || `Claude respondió ${r.status}.`);
+      return { modelo, texto: (j.content ?? []).map((b) => b.text ?? "").join("") };
+    }
+    const base = (ia.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const modelo = ia.modelo || "gpt-4o-mini";
+    const r = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ia.apiKey}` },
+      body: JSON.stringify({ model: modelo, messages: [{ role: "user", content: mensaje }], max_tokens: 20 }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error?.message || `La IA respondió ${r.status}.`);
+    return { modelo, texto: j.choices?.[0]?.message?.content ?? "" };
+  } catch (err) {
+    if (err?.name === "TypeError" || /failed to fetch|load failed|networkerror/i.test(err?.message ?? "")) {
+      const destino = ia.proveedor === "openai" ? ia.baseUrl || "https://api.openai.com/v1" : ia.proveedor === "gemini" ? "generativelanguage.googleapis.com" : "api.anthropic.com";
+      throw new Error(`No se pudo conectar con ${destino}. Revise la Base URL y que el proveedor permita llamadas desde el navegador (CORS).`);
+    }
+    throw err;
+  }
 }

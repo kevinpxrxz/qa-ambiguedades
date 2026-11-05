@@ -1,5 +1,5 @@
 import { listarProyectos, listarSprints, listarAreas, historiasDelSprint, obtenerHU } from "./src/azure.js";
-import { analizarAmbiguedades } from "./src/ambiguedades.js";
+import { analizarAmbiguedades, probarIA } from "./src/ambiguedades.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -460,6 +460,22 @@ $("#btnConfig").addEventListener("click", abrirConfig);
 document.querySelectorAll("[data-cerrar-config]").forEach((el) => el.addEventListener("click", cerrarConfig));
 $("#formConfig").addEventListener("submit", guardarConfigForm);
 $("#btnOlvidar").addEventListener("click", olvidarConfig);
+$("#btnProbarIA").addEventListener("click", async () => {
+  const ia = {
+    proveedor: $("#iaProveedor").value,
+    apiKey: $("#iaApiKey").value.trim(),
+    modelo: $("#iaModelo").value.trim(),
+    baseUrl: $("#iaBaseUrl").value.trim(),
+  };
+  const el = $("#iaPrueba");
+  el.textContent = "Probando…";
+  try {
+    const r = await probarIA(ia);
+    el.textContent = `Conexión OK (${r.modelo}): ${String(r.texto || "").trim().slice(0, 60)}`;
+  } catch (err) {
+    el.textContent = `Error: ${err.message}`;
+  }
+});
 $("#selSprint").addEventListener("change", () => {
   $("#listaHUs").innerHTML = "";
   $("#btnAnalizarSprint").disabled = true;
