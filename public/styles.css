@@ -265,3 +265,5 @@ a { color: var(--primary); }
   background: var(--surface);
 }
 .modal-pie { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.modal[hidden] { display: none !important; }
+
