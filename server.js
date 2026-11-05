@@ -117,6 +117,16 @@ app.post(
 );
 
 app.post(
+  "/api/analizar-texto",
+  ruta(async (req, res) => {
+    const texto = String(req.body?.texto ?? "").trim();
+    if (!texto) return res.status(400).json({ error: "El archivo no tiene texto para analizar." });
+    const { datos, meta } = await analizarAmbiguedades({ texto, ia: iaDeSolicitud(req) });
+    res.json({ datos, meta });
+  }),
+);
+
+app.post(
   "/api/docx",
   ruta(async (req, res) => {
     const { datos, modo = "criterio", analista = "" } = req.body ?? {};
@@ -138,7 +148,7 @@ app.post(
   }),
 );
 
-const puerto = Number(process.env.PORT) || Number(process.env.PORT_AMBIGUEDADES) || 3300;
+const puerto = Number(process.env.PORT_AMBIGUEDADES) || Number(process.env.PORT) || 3300;
 const host = process.env.HOST || "127.0.0.1";
 app.listen(puerto, host, () => {
   const az = azureConfigurado() ? "configurado" : "NO configurado";

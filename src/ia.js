@@ -130,6 +130,24 @@ function normalizar(datos) {
   };
 }
 
+/** Reintenta cuando el proveedor responde saturado (429/5xx) y corta si una llamada se cuelga. */
+async function conReintentos(fn) {
+  const esperas = [4000, 10000, 20000];
+  for (let intento = 0; ; intento++) {
+    const control = new AbortController();
+    const temporizador = setTimeout(() => control.abort(), 60000);
+    try {
+      return await fn(control.signal);
+    } catch (err) {
+      const temporal = [429, 500, 502, 503, 504, 529].includes(Number(err?.status));
+      if (!temporal || intento >= esperas.length) throw err;
+      await new Promise((resolver) => setTimeout(resolver, esperas[intento]));
+    } finally {
+      clearTimeout(temporizador);
+    }
+  }
+}
+
 /**
  * Analiza UNA HU y devuelve solo sus ambigüedades.
  * @param {{texto:string, imagenes?:{mediaType:string, base64:string}[], ia?:object}} p
@@ -138,32 +156,35 @@ export async function analizarAmbiguedades({ texto, imagenes = [], ia = null }) 
   const { proveedor, credenciales, nombre, modelo, configurado } = resolverIA(ia);
   if (!configurado) throw new Error("No hay una conexión de IA configurada (revisa PROVEEDOR_IA y su API key en .env).");
 
-  const peticion = {
+  const base = {
     system: SYSTEM_AMBIGUEDADES,
     mensaje: `Historia de usuario a analizar:\n\n${String(texto ?? "").trim()}`,
     imagenes: imagenes.map((img) => ({ mediaType: img.mediaType, data: img.base64 })),
     esquema: ESQUEMA_AMBIGUEDADES,
     profundidad: "esencial",
     onTexto: () => {},
-    credenciales,
   };
 
-  // La IA a veces responde "saturado" (503/529) o falla de forma pasajera: se reintenta con espera creciente.
-  const ESPERAS_MS = [4000, 10000, 20000];
+  // Gemini suele saturarse por modelo: si el elegido da 503, se prueban alternativas.
+  const esGemini = proveedor === gemini;
+  const modelos = esGemini
+    ? [...new Set([credenciales?.modelo || process.env.GEMINI_MODEL || "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"].filter(Boolean))]
+    : [credenciales?.modelo || modelo];
+
   let respuesta;
-  for (let intento = 0; ; intento++) {
+  for (const modeloIntento of modelos) {
+    const cred = esGemini ? { ...(credenciales ?? {}), modelo: modeloIntento } : credenciales;
     try {
-      respuesta = await proveedor.generar(peticion);
+      respuesta = await conReintentos((signal) => proveedor.generar({ ...base, credenciales: cred, signal }));
       break;
     } catch (err) {
-      const temporal = [429, 500, 502, 503, 504, 529].includes(Number(err?.status));
-      if (!temporal || intento >= ESPERAS_MS.length) {
+      if (Number(err?.status) !== 503) {
         const traducido = proveedor.traducirError?.(err);
         throw new Error(traducido || err?.message || String(err));
       }
-      await new Promise((resolver) => setTimeout(resolver, ESPERAS_MS[intento]));
     }
   }
+  if (!respuesta) throw new Error("El modelo de Gemini está saturado (503). Cambie de modelo o use otro proveedor.");
 
   const datos = parsearJson(respuesta.json);
   if (!datos) throw new Error("La IA no devolvió un JSON válido. Vuelva a intentarlo.");

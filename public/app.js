@@ -297,6 +297,39 @@ async function analizarSeleccionadas() {
   }
 }
 
+async function analizarArchivo() {
+  const file = $("#archivo").files?.[0];
+  if (!file) return mostrarError("Seleccione un archivo Word, Excel o PDF.");
+  mostrarError("");
+  const b = $("#btnAnalizarArchivo");
+  b.disabled = true;
+  b.textContent = "Leyendo archivo…";
+  $("#archivoInfo").textContent = "";
+  try {
+    const { tipo, texto } = await window.extraerTexto(file);
+    if (!texto.trim()) throw new Error("No se pudo extraer texto del archivo (¿PDF escaneado o vacío?).");
+    $("#archivoInfo").textContent = `${file.name} · ${tipo} · ${texto.length.toLocaleString("es")} caracteres leídos.`;
+    b.textContent = "Analizando…";
+    const { datos, meta } = await pedirJSON("/api/analizar-texto", post({ texto }));
+    const r = {
+      hu: { id: null, titulo: file.name, tipo, estado: "", area: "", iteracion: "", enlace: "" },
+      datos,
+      meta,
+      origen: "archivo",
+    };
+    const i = estado.resultados.findIndex((x) => x.origen === "archivo" && x.hu.titulo === file.name);
+    if (i >= 0) estado.resultados[i] = r;
+    else estado.resultados.push(r);
+    render();
+    toast(`Archivo analizado: ${file.name}`);
+  } catch (err) {
+    mostrarError(err.message);
+  } finally {
+    b.disabled = false;
+    b.textContent = "Analizar archivo";
+  }
+}
+
 // ---------------------------------------------------------------- Render
 
 function render() {
@@ -362,11 +395,12 @@ function renderTarjetas() {
     .map((r, i) => {
       const grupos = agrupar(r.datos);
       const n = r.datos.ambiguedades_y_preguntas.length;
+      const esArchivo = r.origen === "archivo" || r.hu.id == null;
       return `<article class="tarjeta ${n ? "con-hallazgos" : "sin-hallazgos"}">
         <header class="tarjeta-head">
           <div>
-            <h3><a href="${esc(r.hu.enlace)}" target="_blank" rel="noopener">#${esc(r.hu.id)}</a> · ${esc(r.hu.titulo)}</h3>
-            <p class="meta">${esc(r.hu.tipo || "")} · ${esc(r.hu.estado || "")}${r.hu.area ? ` · ${esc(r.hu.area)}` : ""}${r.hu.iteracion ? ` · ${esc(r.hu.iteracion.split("\\").pop())}` : ""}</p>
+            <h3>${esArchivo ? `📄 ${esc(r.hu.titulo)}` : `<a href="${esc(r.hu.enlace)}" target="_blank" rel="noopener">#${esc(r.hu.id)}</a> · ${esc(r.hu.titulo)}`}</h3>
+            <p class="meta">${esArchivo ? `Archivo ${esc(r.hu.tipo || "")}` : `${esc(r.hu.tipo || "")} · ${esc(r.hu.estado || "")}${r.hu.area ? ` · ${esc(r.hu.area)}` : ""}${r.hu.iteracion ? ` · ${esc(r.hu.iteracion.split("\\").pop())}` : ""}`}</p>
           </div>
           <span class="contador ${n ? "alerta" : "ok"}">${n} pregunta(s)</span>
         </header>
@@ -401,7 +435,7 @@ function renderTarjetas() {
 // ---------------------------------------------------------------- Exportar
 
 function textoItem(r) {
-  const lineas = [`HU #${r.hu.id} · ${r.hu.titulo}`, ""];
+  const lineas = [r.hu.id ? `HU #${r.hu.id} · ${r.hu.titulo}` : `Archivo: ${r.hu.titulo}`, ""];
   for (const g of agrupar(r.datos)) {
     lineas.push(`${g.id}${g.descripcion ? ` · ${g.descripcion}` : ""}`);
     g.preguntas.forEach((q, k) => lineas.push(`  ${k + 1}. ${q}`));
@@ -438,7 +472,7 @@ function exportarJSON() {
 
 function exportarCSV() {
   const filas = [["HU", "Titulo", "Criterio", "Pregunta"]];
-  for (const r of estado.resultados) for (const a of r.datos.ambiguedades_y_preguntas) filas.push([r.hu.id, r.hu.titulo, a.criterio, a.pregunta]);
+  for (const r of estado.resultados) for (const a of r.datos.ambiguedades_y_preguntas) filas.push([r.hu.id ?? "Archivo", r.hu.titulo, a.criterio, a.pregunta]);
   const csv = filas.map((f) => f.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
   descargar("ambiguedades.csv", `\uFEFF${csv}`, "text/csv;charset=utf-8");
 }
@@ -455,7 +489,7 @@ async function descargarWord(i) {
     }
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement("a"), { href: url, download: `ambiguedades-HU-${r.hu.id}.docx` });
+    const a = Object.assign(document.createElement("a"), { href: url, download: `ambiguedades-HU-${r.hu.id ?? "archivo"}.docx` });
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -501,10 +535,12 @@ async function descargarWordLote() {
 
 $("#tabHU").addEventListener("click", () => cambiarModo("hu"));
 $("#tabSprint").addEventListener("click", () => cambiarModo("sprint"));
+$("#tabArchivo").addEventListener("click", () => cambiarModo("archivo"));
 $("#btnAnalizarHU").addEventListener("click", analizarUna);
 $("#huId").addEventListener("keydown", (e) => e.key === "Enter" && analizarUna());
 $("#btnListarHUs").addEventListener("click", listarHUs);
 $("#btnAnalizarSprint").addEventListener("click", analizarSeleccionadas);
+$("#btnAnalizarArchivo").addEventListener("click", analizarArchivo);
 $("#selProyecto").addEventListener("change", () => cargarSprintsAreas().catch((e) => mostrarError(e.message)));
 $("#selSprint").addEventListener("change", () => {
   $("#listaHUs").innerHTML = "";
@@ -514,8 +550,10 @@ $("#selSprint").addEventListener("change", () => {
 function cambiarModo(modo) {
   $("#tabHU").classList.toggle("activo", modo === "hu");
   $("#tabSprint").classList.toggle("activo", modo === "sprint");
+  $("#tabArchivo").classList.toggle("activo", modo === "archivo");
   $("#modoHU").hidden = modo !== "hu";
   $("#modoSprint").hidden = modo !== "sprint";
+  $("#modoArchivo").hidden = modo !== "archivo";
 }
 
 $("#btnConfig").addEventListener("click", abrirConfig);
