@@ -28,6 +28,7 @@
         <div class="tabs" role="tablist">
           <button id="tabHU" class="tab activo" type="button">Por HU</button>
           <button id="tabSprint" class="tab" type="button">Por sprint</button>
+          <button id="tabArchivo" class="tab" type="button">Archivo</button>
         </div>
 
         <section id="modoHU" class="modo">
@@ -49,6 +50,14 @@
           <button id="btnListarHUs" class="btn secundario bloque" type="button">Listar HUs</button>
           <div id="listaHUs" class="lista-hus"></div>
           <button id="btnAnalizarSprint" class="btn primario bloque" type="button" disabled>Analizar seleccionadas</button>
+        </section>
+
+        <section id="modoArchivo" class="modo" hidden>
+          <label for="archivo">Archivo Word, Excel o PDF</label>
+          <input id="archivo" type="file" accept=".docx,.xlsx,.xls,.pdf" />
+          <button id="btnAnalizarArchivo" class="btn primario bloque" type="button">Analizar archivo</button>
+          <p class="ayuda">Formatos: .docx, .xlsx, .xls y .pdf con texto. Los PDF escaneados (imágenes) no se pueden leer.</p>
+          <div id="archivoInfo" class="ayuda"></div>
         </section>
 
         <div id="progreso" class="progreso" hidden>
