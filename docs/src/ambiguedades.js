@@ -87,6 +87,20 @@ function textoDeGemini(j) {
   return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
 }
 
+/** Reintenta cuando el proveedor responde saturado (429/5xx). */
+async function conReintentos(fn) {
+  const esperas = [4000, 10000, 20000];
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = Number(err?.status);
+      if (![429, 500, 502, 503, 504, 529].includes(status) || i >= esperas.length) throw err;
+      await new Promise((r) => setTimeout(r, esperas[i]));
+    }
+  }
+}
+
 async function gemini(ia, mensaje) {
   const modelo = ia.modelo || "gemini-3.7-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(ia.apiKey)}`;
@@ -100,7 +114,11 @@ async function gemini(ia, mensaje) {
     }),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error?.message || `Gemini respondió ${r.status}.`);
+  if (!r.ok) {
+    const e = new Error(j.error?.message || `Gemini respondió ${r.status}.`);
+    e.status = r.status;
+    throw e;
+  }
   return textoDeGemini(j);
 }
 
@@ -120,7 +138,11 @@ async function openai(ia, mensaje) {
     }),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error?.message || `La IA respondió ${r.status}.`);
+  if (!r.ok) {
+    const e = new Error(j.error?.message || `La IA respondió ${r.status}.`);
+    e.status = r.status;
+    throw e;
+  }
   return j.choices?.[0]?.message?.content ?? "";
 }
 
@@ -141,7 +163,11 @@ async function anthropic(ia, mensaje) {
     }),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error?.message || `Claude respondió ${r.status}.`);
+  if (!r.ok) {
+    const e = new Error(j.error?.message || `Claude respondió ${r.status}.`);
+    e.status = r.status;
+    throw e;
+  }
   return (j.content ?? []).map((b) => b.text ?? "").join("");
 }
 
@@ -149,7 +175,9 @@ export async function analizarAmbiguedades({ texto }) {
   const ia = leerIA();
   if (!ia.proveedor || !ia.apiKey) throw new Error("Configure la IA en ⚙ Configuración.");
   const mensaje = `Historia de usuario a analizar:\n\n${String(texto ?? "").trim()}`;
-  const crudo = ia.proveedor === "gemini" ? await gemini(ia, mensaje) : ia.proveedor === "anthropic" ? await anthropic(ia, mensaje) : await openai(ia, mensaje);
+  const crudo = await conReintentos(() =>
+    ia.proveedor === "gemini" ? gemini(ia, mensaje) : ia.proveedor === "anthropic" ? anthropic(ia, mensaje) : openai(ia, mensaje),
+  );
   const datos = parsearJson(crudo);
   if (!datos) throw new Error("La IA no devolvió un JSON válido. Intente de nuevo.");
   return { datos: normalizar(datos), meta: { proveedor: ia.proveedor, modelo: ia.modelo || "" } };
