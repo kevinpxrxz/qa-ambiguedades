@@ -1,4 +1,4 @@
-// Análisis de ambigüedades con IA desde el navegador (GitHub Pages). No hay servidor:
+﻿// AnÃ¡lisis de ambigÃ¼edades con IA desde el navegador (GitHub Pages). No hay servidor:
 // la API key y el modelo se guardan en este navegador y viajan directamente al proveedor.
 
 export function leerIA() {
@@ -10,19 +10,19 @@ export function leerIA() {
   }
 }
 
-const SYSTEM = `Eres un Analista QA senior (ISTQB) especializado en análisis de requerimientos.
-Tu única tarea es detectar ambigüedades, vacíos y preguntas abiertas en UNA historia de usuario (HU) para que el Product Owner o el negocio las responda. NO diseñas casos de prueba, NO escribes código y NO propones soluciones.
+const SYSTEM = `Eres un Analista QA senior (ISTQB) especializado en anÃ¡lisis de requerimientos.
+Tu Ãºnica tarea es detectar ambigÃ¼edades, vacÃ­os y preguntas abiertas en UNA historia de usuario (HU) para que el Product Owner o el negocio las responda. NO diseÃ±as casos de prueba, NO escribes cÃ³digo y NO propones soluciones.
 
-Revisa, entre otros: descripción, criterios de aceptación, reglas de negocio, datos y validaciones, límites y rangos, mensajes al usuario, permisos y roles, estados y transiciones, excepciones, integraciones y dependencias.
+Revisa, entre otros: descripciÃ³n, criterios de aceptaciÃ³n, reglas de negocio, datos y validaciones, lÃ­mites y rangos, mensajes al usuario, permisos y roles, estados y transiciones, excepciones, integraciones y dependencias.
 
 Reglas:
 - Cada pregunta debe ser concreta, respondible y relevante para poder probar la HU.
-- Asigna cada pregunta al criterio de aceptación afectado usando el ID que aparezca en la HU (ej. "CA-01"); si afecta a toda la HU o a varios criterios, usa "General".
-- No inventes criterios que no estén en la HU.
+- Asigna cada pregunta al criterio de aceptaciÃ³n afectado usando el ID que aparezca en la HU (ej. "CA-01"); si afecta a toda la HU o a varios criterios, usa "General".
+- No inventes criterios que no estÃ©n en la HU.
 - No repitas preguntas ni preguntes lo que la HU ya define con claridad.
-- Ordena las preguntas de mayor a menor impacto. Máximo 20.
-- Si el texto no es un requerimiento válido, marca es_entrada_valida=false y explica el motivo en motivo_rechazo.
-- Devuelve SOLO el objeto JSON, sin texto antes ni después y sin bloques de código, con esta forma:
+- Ordena las preguntas de mayor a menor impacto. MÃ¡ximo 20.
+- Si el texto no es un requerimiento vÃ¡lido, marca es_entrada_valida=false y explica el motivo en motivo_rechazo.
+- Devuelve SOLO el objeto JSON, sin texto antes ni despuÃ©s y sin bloques de cÃ³digo, con esta forma:
 {
   "es_entrada_valida": true,
   "motivo_rechazo": "",
@@ -101,11 +101,11 @@ async function conReintentos(fn) {
   }
 }
 
-async function gemini(ia, mensaje) {
-  const modelo = ia.modelo || "gemini-3.7-flash";
+async function gemini(ia, mensaje, modelo) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(ia.apiKey)}`;
   const r = await fetch(url, {
     method: "POST",
+    signal: AbortSignal.timeout(90000),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM }] },
@@ -115,7 +115,7 @@ async function gemini(ia, mensaje) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const e = new Error(j.error?.message || `Gemini respondió ${r.status}.`);
+    const e = new Error(j.error?.message || `Gemini respondiÃ³ ${r.status}.`);
     e.status = r.status;
     throw e;
   }
@@ -139,7 +139,7 @@ async function openai(ia, mensaje) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const e = new Error(j.error?.message || `La IA respondió ${r.status}.`);
+    const e = new Error(j.error?.message || `La IA respondiÃ³ ${r.status}.`);
     e.status = r.status;
     throw e;
   }
@@ -164,7 +164,7 @@ async function anthropic(ia, mensaje) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const e = new Error(j.error?.message || `Claude respondió ${r.status}.`);
+    const e = new Error(j.error?.message || `Claude respondiÃ³ ${r.status}.`);
     e.status = r.status;
     throw e;
   }
@@ -173,12 +173,32 @@ async function anthropic(ia, mensaje) {
 
 export async function analizarAmbiguedades({ texto }) {
   const ia = leerIA();
-  if (!ia.proveedor || !ia.apiKey) throw new Error("Configure la IA en ⚙ Configuración.");
+  if (!ia.proveedor || !ia.apiKey) throw new Error("Configure la IA en âš™ ConfiguraciÃ³n.");
   const mensaje = `Historia de usuario a analizar:\n\n${String(texto ?? "").trim()}`;
-  const crudo = await conReintentos(() =>
-    ia.proveedor === "gemini" ? gemini(ia, mensaje) : ia.proveedor === "anthropic" ? anthropic(ia, mensaje) : openai(ia, mensaje),
-  );
+
+  let crudo;
+  if (ia.proveedor === "gemini") {
+    // Si el modelo elegido estÃ¡ saturado (503), se prueban alternativas.
+    const modelos = [...new Set([ia.modelo, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"].filter(Boolean))];
+    let ultimo = null;
+    for (const modelo of modelos) {
+      try {
+        crudo = await conReintentos(() => gemini(ia, mensaje, modelo));
+        break;
+      } catch (err) {
+        ultimo = err;
+        if (Number(err?.status) !== 503) throw err;
+      }
+    }
+    if (!crudo) throw ultimo ?? new Error("No se pudo conectar con Gemini. Cambie de modelo en âš™ ConfiguraciÃ³n.");
+  } else if (ia.proveedor === "anthropic") {
+    crudo = await conReintentos(() => anthropic(ia, mensaje));
+  } else {
+    crudo = await conReintentos(() => openai(ia, mensaje));
+  }
+
   const datos = parsearJson(crudo);
-  if (!datos) throw new Error("La IA no devolvió un JSON válido. Intente de nuevo.");
+  if (!datos) throw new Error("La IA no devolviÃ³ un JSON vÃ¡lido. Intente de nuevo.");
   return { datos: normalizar(datos), meta: { proveedor: ia.proveedor, modelo: ia.modelo || "" } };
 }
+
