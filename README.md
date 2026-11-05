@@ -44,6 +44,24 @@ Los resultados se muestran por HU, agrupados por criterio de aceptación, con:
 - descargar Word por HU o del lote completo,
 - exportar JSON/CSV.
 
+## Publicar en la nube (Render)
+
+El repositorio incluye `render.yaml`. En Render:
+
+1. **New → Blueprint** y conecta el repositorio de GitHub.
+2. Render crea el servicio con `npm install` y `npm start`.
+3. Las variables `HOST=0.0.0.0`, `AZDO_ORG_URL` y `AZDO_PROJECT` ya vienen en `render.yaml`.
+4. Abre la URL del servicio; cada persona configura su **PAT** y su **IA** en ⚙ Configuración.
+
+No se guardan secretos en el repositorio ni en el servidor: el PAT y la API key se envían en cada consulta y viven en el navegador de cada usuario.
+
+### Docker
+
+```bash
+docker build -t qa-ambiguedades .
+docker run -p 3300:3300 -e HOST=0.0.0.0 qa-ambiguedades
+```
+
 ## Endpoints
 
 | Método | Ruta | Uso |

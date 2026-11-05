@@ -138,14 +138,15 @@ app.post(
   }),
 );
 
-const puerto = Number(process.env.PORT_AMBIGUEDADES) || 3300;
-app.listen(puerto, "127.0.0.1", () => {
+const puerto = Number(process.env.PORT) || Number(process.env.PORT_AMBIGUEDADES) || 3300;
+const host = process.env.HOST || "127.0.0.1";
+app.listen(puerto, host, () => {
   const az = azureConfigurado() ? "configurado" : "NO configurado";
   const ia = infoIA();
   console.log("");
   console.log("  Ambigüedades de HUs · Ecosistema de Aseguramiento de Calidad TI");
   console.log("  -------------------------------------------------------------");
-  console.log(`  Escuchando en: http://127.0.0.1:${puerto}`);
+  console.log(`  Escuchando en: http://${host}:${puerto}`);
   console.log(`  Azure DevOps:  ${az}`);
   console.log(`  IA:            ${ia.proveedor}${ia.modelo ? ` · ${ia.modelo}` : ""}${ia.configurado ? "" : " (sin credenciales)"}`);
   console.log("");

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: qa-ambiguedades
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: AZDO_ORG_URL
+        value: https://dev.azure.com/arsprimera
+      - key: AZDO_PROJECT
+        value: Proyectos 2026
+      - key: AZDO_API_VERSION
+        value: "7.1"
