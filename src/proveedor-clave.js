@@ -4,6 +4,7 @@ const REGLAS = [
   { prueba: /^AIza/, proveedor: "gemini", nombre: "Gemini (Google)" },
   { prueba: /^AQ\./, proveedor: "gemini", nombre: "Gemini (Google)" },
   { prueba: /^sk-ant-/, proveedor: "anthropic", nombre: "Claude (Anthropic)" },
+  { prueba: /^oc_/i, proveedor: "openai", nombre: "OpenCode", baseUrl: "https://opencode.ai/inference/go/openai/v1" },
   { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
   { prueba: /^xai-/, proveedor: "openai", nombre: "xAI", baseUrl: "https://api.x.ai/v1" },

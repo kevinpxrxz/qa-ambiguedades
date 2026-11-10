@@ -16,6 +16,7 @@ const REGLAS_IA = [
   { prueba: /^AIza/, proveedor: "gemini", nombre: "Gemini (Google)" },
   { prueba: /^AQ\./, proveedor: "gemini", nombre: "Gemini (Google)" },
   { prueba: /^sk-ant-/, proveedor: "anthropic", nombre: "Claude (Anthropic)" },
+  { prueba: /^oc_/i, proveedor: "openai", nombre: "OpenCode", baseUrl: "https://opencode.ai/inference/go/openai/v1" },
   { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
   { prueba: /^xai-/, proveedor: "openai", nombre: "xAI", baseUrl: "https://api.x.ai/v1" },
@@ -182,19 +183,30 @@ async function gemini(ia, mensaje, modelo) {
   return textoDeGemini(j);
 }
 
+function cabecerasCompatibles(base, apiKey) {
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
+  // OpenCode Go pide identificar una sesión estable por conversación.
+  if (/opencode\.ai/i.test(base)) {
+    headers["x-opencode-session"] = globalThis.crypto?.randomUUID?.() ?? `qa-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+  return headers;
+}
+
 async function openai(ia, mensaje) {
   const base = (ia.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const esOpenCode = /opencode\.ai/i.test(base);
   const r = await fetch(`${base}/chat/completions`, {
     method: "POST",
     signal: AbortSignal.timeout(90000),
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ia.apiKey}` },
+    headers: cabecerasCompatibles(base, ia.apiKey),
     body: JSON.stringify({
       model: ia.modelo || "gpt-4o-mini",
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: mensaje },
       ],
-      response_format: { type: "json_object" },
+      // OpenCode Go rechaza algunos response_format; el SYSTEM ya obliga a responder JSON.
+      ...(esOpenCode ? {} : { response_format: { type: "json_object" } }),
       temperature: 0.2,
     }),
   });
@@ -308,7 +320,7 @@ export async function probarIA(ia) {
     const modelo = ia.modelo || "gpt-4o-mini";
     const r = await fetch(`${base}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ia.apiKey}` },
+      headers: cabecerasCompatibles(base, ia.apiKey),
       body: JSON.stringify({ model: modelo, messages: [{ role: "user", content: mensaje }], max_tokens: 20 }),
     });
     const j = await r.json().catch(() => ({}));
