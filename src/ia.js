@@ -19,7 +19,7 @@ export function proveedorActivo() {
 export function resolverIA(ia) {
   if (ia) {
     // La API key manda: si el navegador no envía proveedor (o quedó uno viejo), se detecta por su prefijo.
-    const detectado = detectarProveedor(ia.apiKey, { baseUrl: ia.baseUrl });
+    const detectado = detectarProveedor(ia.apiKey, { baseUrl: ia.baseUrl, modelo: ia.modelo });
     const id = detectado?.proveedor || (MODULOS_IA[ia.proveedor] ? ia.proveedor : null);
     if (id) {
       const proveedor = MODULOS_IA[id];

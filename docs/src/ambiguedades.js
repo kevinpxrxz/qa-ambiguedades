@@ -19,8 +19,9 @@ const REGLAS_IA = [
   { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
   { prueba: /^xai-/, proveedor: "openai", nombre: "xAI", baseUrl: "https://api.x.ai/v1" },
+  { prueba: /^sk-[a-z0-9]{32}$/i, proveedor: "openai", nombre: "DeepSeek", baseUrl: "https://api.deepseek.com" },
   { prueba: /^sk-(?:proj|svcacct|admin)-/, proveedor: "openai", nombre: "OpenAI", baseUrl: "https://api.openai.com/v1" },
-  { prueba: /^sk-/, proveedor: "openai", nombre: "Compatible con OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { prueba: /^sk-/, proveedor: "openai", nombre: "Compatible con OpenAI", generico: true },
 ];
 const NOMBRES_BASE_IA = [
   [/opencode\.ai/i, "OpenCode"],
@@ -32,7 +33,15 @@ const NOMBRES_BASE_IA = [
   [/localhost|127\.0\.0\.1/i, "Local (Ollama/LM Studio)"],
 ];
 
-export function detectarProveedor(apiKey, baseUrl = "") {
+/** Si la clave es genérica `sk-`, el modelo ayuda a saber el servicio (ej. deepseek-chat). */
+function sugerenciaModelo(modelo) {
+  const valor = String(modelo ?? "").trim();
+  if (/^deepseek/i.test(valor)) return { nombre: "DeepSeek", baseUrl: "https://api.deepseek.com" };
+  if (/^(gpt-|o[1-9])/i.test(valor)) return { nombre: "OpenAI", baseUrl: "https://api.openai.com/v1" };
+  return null;
+}
+
+export function detectarProveedor(apiKey, baseUrl = "", modelo = "") {
   const clave = String(apiKey ?? "").trim();
   if (!clave) return null;
   const base = String(baseUrl ?? "").trim().replace(/\/+$/, "");
@@ -40,17 +49,18 @@ export function detectarProveedor(apiKey, baseUrl = "") {
   // Una Base URL propia convierte una clave desconocida en un proveedor compatible con OpenAI.
   const proveedor = regla?.proveedor ?? (base ? "openai" : null);
   if (!proveedor) return null;
-  const url = proveedor === "openai" ? base || regla?.baseUrl || "" : "";
+  const pista = proveedor === "openai" && (!regla || regla.generico) ? sugerenciaModelo(modelo) : null;
+  const url = proveedor === "openai" ? base || pista?.baseUrl || regla?.baseUrl || "https://api.openai.com/v1" : "";
   return {
     proveedor,
-    nombre: NOMBRES_BASE_IA.find(([patron]) => patron.test(url))?.[1] || regla?.nombre || "Compatible con OpenAI",
+    nombre: NOMBRES_BASE_IA.find(([patron]) => patron.test(url))?.[1] || pista?.nombre || regla?.nombre || "Compatible con OpenAI",
     baseUrl: url,
   };
 }
 
 /** Completa la conexión con el proveedor detectado en la API key (respeta configuraciones antiguas). */
 function conDeteccion(ia) {
-  const detectado = detectarProveedor(ia?.apiKey, ia?.baseUrl);
+  const detectado = detectarProveedor(ia?.apiKey, ia?.baseUrl, ia?.modelo);
   if (!detectado) return ia;
   return {
     ...ia,
@@ -264,7 +274,7 @@ export async function analizarAmbiguedades({ texto }) {
 export async function probarIA(ia) {
   ia = conDeteccion(ia);
   if (!ia?.apiKey) throw new Error("Indique la API key de la IA.");
-  if (!ia?.proveedor) throw new Error("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL.");
+  if (!ia?.proveedor) throw new Error("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL (ej. https://api.deepseek.com).");
   const mensaje = "Responde solo: OK";
   try {
     if (ia.proveedor === "gemini") {

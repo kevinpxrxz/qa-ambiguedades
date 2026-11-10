@@ -50,7 +50,7 @@ async function iniciar() {
   mostrarError("");
   const c = leerConfig();
   pintarEstados();
-  if (!c.azure?.org || !c.azure?.project || !c.azure?.pat || !c.ia?.apiKey || !(detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) || c.ia.proveedor)) {
+  if (!c.azure?.org || !c.azure?.project || !c.azure?.pat || !c.ia?.apiKey || !(detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl, c.ia.modelo) || c.ia.proveedor)) {
     abrirConfig();
     mostrarError("Complete la configuración de Azure y de la IA para empezar.");
     return;
@@ -65,7 +65,7 @@ async function iniciar() {
 function pintarEstados() {
   const c = leerConfig();
   const azOk = Boolean(c.azure?.org && c.azure?.project && c.azure?.pat);
-  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) : null;
+  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl, c.ia.modelo) : null;
   const iaOk = Boolean(c.ia?.apiKey && (detectado || c.ia?.proveedor));
   const azEl = $("#estadoAzure");
   azEl.textContent = azOk ? `Azure · ${c.azure.project}` : "Azure sin configurar";
@@ -468,9 +468,9 @@ function actualizarDeteccionIA() {
     el.classList.remove("ok");
     return;
   }
-  const detectado = detectarProveedorIA(apiKey, $("#iaBaseUrl").value);
+  const detectado = detectarProveedorIA(apiKey, $("#iaBaseUrl").value, $("#iaModelo").value);
   if (!detectado) {
-    el.textContent = "No se reconoce esta clave. Si es de un servicio compatible con OpenAI, indique su Base URL.";
+    el.textContent = "No se reconoce esta clave. Indique la Base URL del servicio (ej. https://api.deepseek.com).";
     el.classList.remove("ok");
     return;
   }
@@ -487,14 +487,14 @@ function guardarConfigForm(e) {
   };
   const apiKey = $("#iaApiKey").value.trim();
   const baseUrl = $("#iaBaseUrl").value.trim();
-  const detectado = detectarProveedorIA(apiKey, baseUrl);
+  const detectado = detectarProveedorIA(apiKey, baseUrl, $("#iaModelo").value.trim());
   const previa = leerConfig().ia ?? {};
   const mismaClave = apiKey === (previa.apiKey ?? "");
   if (!azure.org || !azure.project) return errorConfig("Indique la organización y el proyecto de Azure.");
   if (!azure.pat) return errorConfig("Indique el PAT de Azure.");
   if (!apiKey) return errorConfig("Indique la API key de la IA.");
   if (!detectado && !(previa.proveedor && mismaClave)) {
-    return errorConfig("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL.");
+    return errorConfig("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL (ej. https://api.deepseek.com).");
   }
   const ia = {
     proveedor: detectado?.proveedor || (mismaClave ? previa.proveedor : "") || "",
@@ -560,6 +560,7 @@ $("#selProyecto").addEventListener("change", async () => {
 });
 $("#iaApiKey").addEventListener("input", actualizarDeteccionIA);
 $("#iaBaseUrl").addEventListener("input", actualizarDeteccionIA);
+$("#iaModelo").addEventListener("input", actualizarDeteccionIA);
 
 function cambiarModo(modo) {
   $("#tabHU").classList.toggle("activo", modo === "hu");

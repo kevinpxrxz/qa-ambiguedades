@@ -24,8 +24,9 @@ const REGLAS_IA = [
   { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
   { prueba: /^xai-/, proveedor: "openai", nombre: "xAI", baseUrl: "https://api.x.ai/v1" },
+  { prueba: /^sk-[a-z0-9]{32}$/i, proveedor: "openai", nombre: "DeepSeek", baseUrl: "https://api.deepseek.com" },
   { prueba: /^sk-(?:proj|svcacct|admin)-/, proveedor: "openai", nombre: "OpenAI", baseUrl: "https://api.openai.com/v1" },
-  { prueba: /^sk-/, proveedor: "openai", nombre: "Compatible con OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { prueba: /^sk-/, proveedor: "openai", nombre: "Compatible con OpenAI", generico: true },
 ];
 const NOMBRES_BASE_IA = [
   [/opencode\.ai/i, "OpenCode"],
@@ -37,7 +38,15 @@ const NOMBRES_BASE_IA = [
   [/localhost|127\.0\.0\.1/i, "Local (Ollama/LM Studio)"],
 ];
 
-function detectarProveedorIA(apiKey, baseUrl = "") {
+/** Si la clave es genérica `sk-`, el modelo ayuda a saber el servicio (ej. deepseek-chat). */
+function sugerenciaModeloIA(modelo) {
+  const valor = String(modelo ?? "").trim();
+  if (/^deepseek/i.test(valor)) return { nombre: "DeepSeek", baseUrl: "https://api.deepseek.com" };
+  if (/^(gpt-|o[1-9])/i.test(valor)) return { nombre: "OpenAI", baseUrl: "https://api.openai.com/v1" };
+  return null;
+}
+
+function detectarProveedorIA(apiKey, baseUrl = "", modelo = "") {
   const clave = String(apiKey ?? "").trim();
   if (!clave) return null;
   const base = String(baseUrl ?? "").trim().replace(/\/+$/, "");
@@ -45,10 +54,11 @@ function detectarProveedorIA(apiKey, baseUrl = "") {
   // Una Base URL propia convierte una clave desconocida en un proveedor compatible con OpenAI.
   const proveedor = regla?.proveedor ?? (base ? "openai" : null);
   if (!proveedor) return null;
-  const url = proveedor === "openai" ? base || regla?.baseUrl || "" : "";
+  const pista = proveedor === "openai" && (!regla || regla.generico) ? sugerenciaModeloIA(modelo) : null;
+  const url = proveedor === "openai" ? base || pista?.baseUrl || regla?.baseUrl || "https://api.openai.com/v1" : "";
   return {
     proveedor,
-    nombre: NOMBRES_BASE_IA.find(([patron]) => patron.test(url))?.[1] || regla?.nombre || "Compatible con OpenAI",
+    nombre: NOMBRES_BASE_IA.find(([patron]) => patron.test(url))?.[1] || pista?.nombre || regla?.nombre || "Compatible con OpenAI",
     baseUrl: url,
   };
 }
@@ -70,7 +80,7 @@ function cabeceras() {
   const c = leerConfig();
   const h = {};
   if (c.azurePat) h["X-Azure-Pat"] = c.azurePat;
-  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) : null;
+  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl, c.ia.modelo) : null;
   const proveedor = detectado?.proveedor || c.ia?.proveedor || "";
   if (c.ia?.apiKey && proveedor) {
     const ia = {
@@ -127,7 +137,7 @@ function pintarEstados() {
   const az = estado.config?.azure;
   const ia = estado.config?.ia;
   const azOk = Boolean(c.azurePat) || Boolean(az?.configurado);
-  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) : null;
+  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl, c.ia.modelo) : null;
   const iaOk = Boolean((c.ia?.apiKey && (detectado || c.ia?.proveedor)) || ia?.configurado);
   const nombreIA = detectado?.nombre || c.ia?.nombre || NOMBRES_IA[c.ia?.proveedor] || ia?.proveedor;
   const azEl = $("#estadoAzure");
@@ -176,9 +186,9 @@ function actualizarDeteccionIA() {
     el.classList.remove("ok");
     return;
   }
-  const detectado = detectarProveedorIA(apiKey, $("#iaBaseUrl").value);
+  const detectado = detectarProveedorIA(apiKey, $("#iaBaseUrl").value, $("#iaModelo").value);
   if (!detectado) {
-    el.textContent = "No se reconoce esta clave. Si es de un servicio compatible con OpenAI, indique su Base URL.";
+    el.textContent = "No se reconoce esta clave. Indique la Base URL del servicio (ej. https://api.deepseek.com).";
     el.classList.remove("ok");
     return;
   }
@@ -191,13 +201,13 @@ function guardarConfigForm(e) {
   const apiKey = $("#iaApiKey").value.trim();
   const modelo = $("#iaModelo").value.trim();
   const baseUrl = $("#iaBaseUrl").value.trim();
-  const detectado = detectarProveedorIA(apiKey, baseUrl);
+  const detectado = detectarProveedorIA(apiKey, baseUrl, modelo);
   const previa = leerConfig().ia ?? {};
   const mismaClave = apiKey === (previa.apiKey ?? "");
   const azurePat = $("#azPat").value.trim();
   if (!apiKey && !estado.config?.ia?.configurado) return errorConfig("Indique la API key de la IA.");
   if (apiKey && !detectado && !(previa.proveedor && mismaClave)) {
-    return errorConfig("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL.");
+    return errorConfig("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL (ej. https://api.deepseek.com).");
   }
   if (!azurePat && !estado.config?.azure?.configurado) return errorConfig("Indique el PAT de Azure DevOps.");
   const ia = {
@@ -639,5 +649,6 @@ $("#formConfig").addEventListener("submit", guardarConfigForm);
 $("#btnOlvidar").addEventListener("click", olvidarConfig);
 $("#iaApiKey").addEventListener("input", actualizarDeteccionIA);
 $("#iaBaseUrl").addEventListener("input", actualizarDeteccionIA);
+$("#iaModelo").addEventListener("input", actualizarDeteccionIA);
 
 iniciar();
