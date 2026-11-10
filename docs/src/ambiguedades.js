@@ -14,6 +14,7 @@ export function leerIA() {
 // La persona solo pega la clave; el proveedor sale de su prefijo.
 const REGLAS_IA = [
   { prueba: /^AIza/, proveedor: "gemini", nombre: "Gemini (Google)" },
+  { prueba: /^AQ\./, proveedor: "gemini", nombre: "Gemini (Google)" },
   { prueba: /^sk-ant-/, proveedor: "anthropic", nombre: "Claude (Anthropic)" },
   { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
@@ -151,11 +152,11 @@ async function conReintentos(fn) {
 }
 
 async function gemini(ia, mensaje, modelo) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(ia.apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`;
   const r = await fetch(url, {
     method: "POST",
     signal: AbortSignal.timeout(90000),
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": ia.apiKey },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM }] },
       contents: [{ role: "user", parts: [{ text: mensaje }] }],
@@ -268,9 +269,9 @@ export async function probarIA(ia) {
   try {
     if (ia.proveedor === "gemini") {
       const modelo = ia.modelo || "gemini-3.6-flash";
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(ia.apiKey)}`, {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": ia.apiKey },
         body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: mensaje }] }] }),
       });
       const j = await r.json().catch(() => ({}));

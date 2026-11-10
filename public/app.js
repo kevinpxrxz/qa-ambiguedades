@@ -19,6 +19,7 @@ const NOMBRES_IA = { gemini: "Gemini", anthropic: "Claude", openai: "Compatible 
 // La persona solo pega la clave; el proveedor sale de su prefijo.
 const REGLAS_IA = [
   { prueba: /^AIza/, proveedor: "gemini", nombre: "Gemini (Google)" },
+  { prueba: /^AQ\./, proveedor: "gemini", nombre: "Gemini (Google)" },
   { prueba: /^sk-ant-/, proveedor: "anthropic", nombre: "Claude (Anthropic)" },
   { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
