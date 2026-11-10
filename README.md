@@ -8,14 +8,14 @@ Reutiliza el cliente de Azure DevOps y los proveedores de IA del **Ecosistema de
 
 - Node.js 22.15 o superior.
 - Un PAT de Azure DevOps con lectura de Work Items.
-- Una API key de Gemini o Anthropic (o un proveedor compatible con OpenAI).
+- Una API key de Gemini, Anthropic o de un servicio compatible con OpenAI. La app detecta el proveedor automáticamente según la clave.
 
 ## Configuración
 
 1. Copia `.env.example` a `.env`.
 2. Completa:
    - `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_PAT`.
-   - `PROVEEDOR_IA` y la clave correspondiente (`GEMINI_API_KEY` o `ANTHROPIC_API_KEY`).
+   - La clave de IA: `GEMINI_API_KEY` o `ANTHROPIC_API_KEY`. `PROVEEDOR_IA` es opcional; si se omite, se deduce de la clave configurada.
 3. Instala dependencias:
 
 ```bash
@@ -51,7 +51,7 @@ El repositorio incluye `render.yaml`. En Render:
 1. **New → Blueprint** y conecta el repositorio de GitHub.
 2. Render crea el servicio con `npm install` y `npm start`.
 3. Las variables `HOST=0.0.0.0`, `AZDO_ORG_URL` y `AZDO_PROJECT` ya vienen en `render.yaml`.
-4. Abre la URL del servicio; cada persona configura su **PAT** y su **IA** en ⚙ Configuración.
+4. Abre la URL del servicio; cada persona configura su **PAT** y pega su **API key** en ⚙ Configuración (el proveedor de IA se detecta solo).
 
 No se guardan secretos en el repositorio ni en el servidor: el PAT y la API key se envían en cada consulta y viven en el navegador de cada usuario.
 

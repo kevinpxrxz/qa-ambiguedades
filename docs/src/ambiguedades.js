@@ -4,10 +4,59 @@
 export function leerIA() {
   try {
     const c = JSON.parse(localStorage.getItem("qa_amb_config") || "{}");
-    return c.ia ?? {};
+    return conDeteccion(c.ia ?? {});
   } catch {
     return {};
   }
+}
+
+// ---------------------------------------------------------------- Detección de IA por API key
+// La persona solo pega la clave; el proveedor sale de su prefijo.
+const REGLAS_IA = [
+  { prueba: /^AIza/, proveedor: "gemini", nombre: "Gemini (Google)" },
+  { prueba: /^sk-ant-/, proveedor: "anthropic", nombre: "Claude (Anthropic)" },
+  { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
+  { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
+  { prueba: /^xai-/, proveedor: "openai", nombre: "xAI", baseUrl: "https://api.x.ai/v1" },
+  { prueba: /^sk-(?:proj|svcacct|admin)-/, proveedor: "openai", nombre: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { prueba: /^sk-/, proveedor: "openai", nombre: "Compatible con OpenAI", baseUrl: "https://api.openai.com/v1" },
+];
+const NOMBRES_BASE_IA = [
+  [/opencode\.ai/i, "OpenCode"],
+  [/deepseek\.com/i, "DeepSeek"],
+  [/openrouter\.ai/i, "OpenRouter"],
+  [/groq\.com/i, "Groq"],
+  [/mistral\.ai/i, "Mistral"],
+  [/api\.x\.ai/i, "xAI"],
+  [/localhost|127\.0\.0\.1/i, "Local (Ollama/LM Studio)"],
+];
+
+export function detectarProveedor(apiKey, baseUrl = "") {
+  const clave = String(apiKey ?? "").trim();
+  if (!clave) return null;
+  const base = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+  const regla = REGLAS_IA.find((r) => r.prueba.test(clave));
+  // Una Base URL propia convierte una clave desconocida en un proveedor compatible con OpenAI.
+  const proveedor = regla?.proveedor ?? (base ? "openai" : null);
+  if (!proveedor) return null;
+  const url = proveedor === "openai" ? base || regla?.baseUrl || "" : "";
+  return {
+    proveedor,
+    nombre: NOMBRES_BASE_IA.find(([patron]) => patron.test(url))?.[1] || regla?.nombre || "Compatible con OpenAI",
+    baseUrl: url,
+  };
+}
+
+/** Completa la conexión con el proveedor detectado en la API key (respeta configuraciones antiguas). */
+function conDeteccion(ia) {
+  const detectado = detectarProveedor(ia?.apiKey, ia?.baseUrl);
+  if (!detectado) return ia;
+  return {
+    ...ia,
+    proveedor: detectado.proveedor,
+    nombre: detectado.nombre,
+    baseUrl: ia?.baseUrl || detectado.baseUrl || "",
+  };
 }
 
 const SYSTEM = `Eres un Analista QA senior (ISTQB) especializado en análisis de requerimientos.
@@ -207,12 +256,14 @@ export async function analizarAmbiguedades({ texto }) {
 
   const datos = parsearJson(crudo);
   if (!datos) throw new Error("La IA no devolvió un JSON válido. Intente de nuevo.");
-  return { datos: normalizar(datos), meta: { proveedor: ia.proveedor, modelo: ia.modelo || "" } };
+  return { datos: normalizar(datos), meta: { proveedor: ia.nombre || ia.proveedor, modelo: ia.modelo || "" } };
 }
 
 /** Prueba la conexión con el proveedor de IA con un mensaje mínimo. */
 export async function probarIA(ia) {
-  if (!ia?.proveedor || !ia?.apiKey) throw new Error("Indique el proveedor y la API key.");
+  ia = conDeteccion(ia);
+  if (!ia?.apiKey) throw new Error("Indique la API key de la IA.");
+  if (!ia?.proveedor) throw new Error("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL.");
   const mensaje = "Responde solo: OK";
   try {
     if (ia.proveedor === "gemini") {

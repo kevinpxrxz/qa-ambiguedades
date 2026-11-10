@@ -86,18 +86,13 @@
         <p class="ayuda">Se guarda solo en este navegador. Se envía al servidor en cada consulta; no se escribe en disco.</p>
         <fieldset>
           <legend>IA</legend>
-          <label for="iaProveedor">Proveedor</label>
-          <select id="iaProveedor">
-            <option value="gemini">Gemini (Google)</option>
-            <option value="anthropic">Claude (Anthropic)</option>
-            <option value="openai">Compatible con OpenAI (OpenCode, DeepSeek, Groq…)</option>
-          </select>
           <label for="iaApiKey">API key</label>
           <input id="iaApiKey" type="password" autocomplete="off" placeholder="Pega tu API key" />
+          <p id="iaProveedorDetectado" class="proveedor-detectado" aria-live="polite">El proveedor se detecta automáticamente al pegar la clave.</p>
           <label for="iaModelo">Modelo (opcional)</label>
           <input id="iaModelo" type="text" placeholder="Ej. gemini-3.7-flash / claude-sonnet-5 / deepseek-chat" />
-          <label for="iaBaseUrl">Base URL (solo compatible con OpenAI)</label>
-          <input id="iaBaseUrl" type="url" placeholder="https://api.openai.com/v1" />
+          <label for="iaBaseUrl">Base URL (solo para compatibles con OpenAI distintos de OpenAI)</label>
+          <input id="iaBaseUrl" type="url" placeholder="https://api.deepseek.com/v1" />
         </fieldset>
         <fieldset>
           <legend>Azure DevOps</legend>

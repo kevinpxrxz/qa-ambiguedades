@@ -267,3 +267,20 @@ a { color: var(--primary); }
 .modal-pie { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .modal[hidden] { display: none !important; }
 
+
+.proveedor-detectado {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.proveedor-detectado.ok {
+  border-color: #abefc6;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-weight: 600;
+}

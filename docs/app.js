@@ -1,5 +1,5 @@
 import { listarProyectos, listarSprints, listarAreas, historiasDelSprint, obtenerHU } from "./src/azure.js";
-import { analizarAmbiguedades, probarIA } from "./src/ambiguedades.js";
+import { analizarAmbiguedades, probarIA, detectarProveedor as detectarProveedorIA } from "./src/ambiguedades.js";
 import { extraerTexto } from "./src/archivos.js";
 
 const $ = (s) => document.querySelector(s);
@@ -50,7 +50,7 @@ async function iniciar() {
   mostrarError("");
   const c = leerConfig();
   pintarEstados();
-  if (!c.azure?.org || !c.azure?.project || !c.azure?.pat || !c.ia?.proveedor || !c.ia?.apiKey) {
+  if (!c.azure?.org || !c.azure?.project || !c.azure?.pat || !c.ia?.apiKey || !(detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) || c.ia.proveedor)) {
     abrirConfig();
     mostrarError("Complete la configuración de Azure y de la IA para empezar.");
     return;
@@ -65,12 +65,14 @@ async function iniciar() {
 function pintarEstados() {
   const c = leerConfig();
   const azOk = Boolean(c.azure?.org && c.azure?.project && c.azure?.pat);
-  const iaOk = Boolean(c.ia?.proveedor && c.ia?.apiKey);
+  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) : null;
+  const iaOk = Boolean(c.ia?.apiKey && (detectado || c.ia?.proveedor));
   const azEl = $("#estadoAzure");
   azEl.textContent = azOk ? `Azure · ${c.azure.project}` : "Azure sin configurar";
   azEl.className = `chip ${azOk ? "ok" : "mal"}`;
   const iaEl = $("#estadoIA");
-  iaEl.textContent = iaOk ? `IA · ${NOMBRES_IA[c.ia.proveedor] ?? c.ia.proveedor}` : "IA sin configurar";
+  const nombreIA = detectado?.nombre || c.ia?.nombre || NOMBRES_IA[c.ia?.proveedor] || c.ia?.proveedor;
+  iaEl.textContent = iaOk ? `IA · ${nombreIA || "configurada"}` : "IA sin configurar";
   iaEl.className = `chip ${iaOk ? "ok" : "mal"}`;
 }
 
@@ -439,10 +441,10 @@ function abrirConfig() {
   $("#azOrg").value = az.org || "https://dev.azure.com/arsprimera";
   $("#azProyecto").value = az.project || "Proyectos 2026";
   $("#azPat").value = az.pat ?? "";
-  $("#iaProveedor").value = ia.proveedor || "gemini";
   $("#iaApiKey").value = ia.apiKey ?? "";
   $("#iaModelo").value = ia.modelo ?? "";
   $("#iaBaseUrl").value = ia.baseUrl ?? "";
+  actualizarDeteccionIA();
   $("#configError").hidden = true;
   $("#modalConfig").hidden = false;
 }
@@ -457,6 +459,25 @@ function errorConfig(texto) {
   el.hidden = !texto;
 }
 
+/** Muestra en vivo qué proveedor se detecta con la clave y la Base URL escritas. */
+function actualizarDeteccionIA() {
+  const el = $("#iaProveedorDetectado");
+  const apiKey = $("#iaApiKey").value.trim();
+  if (!apiKey) {
+    el.textContent = "El proveedor se detecta automáticamente al pegar la clave.";
+    el.classList.remove("ok");
+    return;
+  }
+  const detectado = detectarProveedorIA(apiKey, $("#iaBaseUrl").value);
+  if (!detectado) {
+    el.textContent = "No se reconoce esta clave. Si es de un servicio compatible con OpenAI, indique su Base URL.";
+    el.classList.remove("ok");
+    return;
+  }
+  el.textContent = `Proveedor detectado: ${detectado.nombre}`;
+  el.classList.add("ok");
+}
+
 function guardarConfigForm(e) {
   e.preventDefault();
   const azure = {
@@ -464,15 +485,24 @@ function guardarConfigForm(e) {
     project: $("#azProyecto").value.trim(),
     pat: $("#azPat").value.trim(),
   };
-  const ia = {
-    proveedor: $("#iaProveedor").value,
-    apiKey: $("#iaApiKey").value.trim(),
-    modelo: $("#iaModelo").value.trim(),
-    baseUrl: $("#iaBaseUrl").value.trim(),
-  };
+  const apiKey = $("#iaApiKey").value.trim();
+  const baseUrl = $("#iaBaseUrl").value.trim();
+  const detectado = detectarProveedorIA(apiKey, baseUrl);
+  const previa = leerConfig().ia ?? {};
+  const mismaClave = apiKey === (previa.apiKey ?? "");
   if (!azure.org || !azure.project) return errorConfig("Indique la organización y el proyecto de Azure.");
   if (!azure.pat) return errorConfig("Indique el PAT de Azure.");
-  if (!ia.apiKey) return errorConfig("Indique la API key de la IA.");
+  if (!apiKey) return errorConfig("Indique la API key de la IA.");
+  if (!detectado && !(previa.proveedor && mismaClave)) {
+    return errorConfig("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL.");
+  }
+  const ia = {
+    proveedor: detectado?.proveedor || (mismaClave ? previa.proveedor : "") || "",
+    apiKey,
+    modelo: $("#iaModelo").value.trim(),
+    baseUrl: baseUrl || detectado?.baseUrl || "",
+    nombre: detectado?.nombre || "",
+  };
   guardarConfig({ azure, ia });
   cerrarConfig();
   iniciar().then(() => toast("Configuración guardada"));
@@ -500,7 +530,6 @@ $("#formConfig").addEventListener("submit", guardarConfigForm);
 $("#btnOlvidar").addEventListener("click", olvidarConfig);
 $("#btnProbarIA").addEventListener("click", async () => {
   const ia = {
-    proveedor: $("#iaProveedor").value,
     apiKey: $("#iaApiKey").value.trim(),
     modelo: $("#iaModelo").value.trim(),
     baseUrl: $("#iaBaseUrl").value.trim(),
@@ -529,6 +558,8 @@ $("#selProyecto").addEventListener("change", async () => {
     mostrarError(err.message);
   }
 });
+$("#iaApiKey").addEventListener("input", actualizarDeteccionIA);
+$("#iaBaseUrl").addEventListener("input", actualizarDeteccionIA);
 
 function cambiarModo(modo) {
   $("#tabHU").classList.toggle("activo", modo === "hu");

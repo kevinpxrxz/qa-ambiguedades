@@ -3,6 +3,7 @@
 import * as anthropic from "./proveedores/anthropic.js";
 import * as gemini from "./proveedores/gemini.js";
 import * as openai from "./proveedores/openai.js";
+import { detectarProveedor } from "./proveedor-clave.js";
 
 const PROVEEDORES = { anthropic, gemini };
 const MODULOS_IA = { anthropic, gemini, openai };
@@ -16,15 +17,21 @@ export function proveedorActivo() {
 
 /** Proveedor a usar; `ia` = { proveedor, apiKey, modelo, baseUrl } (opcional, desde el navegador). */
 export function resolverIA(ia) {
-  if (ia && MODULOS_IA[ia.proveedor]) {
-    const proveedor = MODULOS_IA[ia.proveedor];
-    return {
-      proveedor,
-      credenciales: ia,
-      nombre: ia.nombre || proveedor.NOMBRE,
-      modelo: ia.modelo || proveedor.MODELO || "",
-      configurado: proveedor.tieneCredenciales(ia),
-    };
+  if (ia) {
+    // La API key manda: si el navegador no envía proveedor (o quedó uno viejo), se detecta por su prefijo.
+    const detectado = detectarProveedor(ia.apiKey, { baseUrl: ia.baseUrl });
+    const id = detectado?.proveedor || (MODULOS_IA[ia.proveedor] ? ia.proveedor : null);
+    if (id) {
+      const proveedor = MODULOS_IA[id];
+      const credenciales = { ...ia, proveedor: id, baseUrl: ia.baseUrl || detectado?.baseUrl || "" };
+      return {
+        proveedor,
+        credenciales,
+        nombre: detectado?.nombre || ia.nombre || proveedor.NOMBRE,
+        modelo: ia.modelo || proveedor.MODELO || "",
+        configurado: proveedor.tieneCredenciales(credenciales),
+      };
+    }
   }
   const proveedor = proveedorActivo();
   return { proveedor, credenciales: null, nombre: proveedor.NOMBRE, modelo: proveedor.MODELO, configurado: proveedor.tieneCredenciales() };

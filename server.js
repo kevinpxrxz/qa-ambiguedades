@@ -16,6 +16,7 @@ import {
   conPAT,
 } from "./src/azure-devops.js";
 import { analizarAmbiguedades, infoIA } from "./src/ia.js";
+import { detectarProveedor } from "./src/proveedor-clave.js";
 import { generarDocxAmbiguedades, generarDocxAmbiguedadesLote } from "./src/ambiguedades.js";
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
@@ -43,13 +44,18 @@ function iaDeSolicitud(req) {
   if (!crudo) return null;
   try {
     const c = JSON.parse(Buffer.from(crudo, "base64").toString("utf8"));
-    if (!["gemini", "anthropic", "openai"].includes(c?.proveedor)) return null;
+    const apiKey = String(c?.apiKey ?? "").trim().slice(0, 500);
+    const baseUrl = String(c?.baseUrl ?? "").trim().replace(/\/+$/, "").slice(0, 300);
+    // La API key define el proveedor; el campo `proveedor` solo se usa si la clave no se reconoce.
+    const detectado = detectarProveedor(apiKey, { baseUrl });
+    const proveedor = detectado?.proveedor ?? (["gemini", "anthropic", "openai"].includes(c?.proveedor) ? c.proveedor : "");
+    if (!proveedor) return null;
     return {
-      proveedor: c.proveedor,
-      nombre: String(c.nombre ?? "").trim().slice(0, 60),
-      apiKey: String(c.apiKey ?? "").trim().slice(0, 500),
+      proveedor,
+      nombre: detectado?.nombre || String(c.nombre ?? "").trim().slice(0, 60),
+      apiKey,
       modelo: String(c.modelo ?? "").trim().slice(0, 120),
-      baseUrl: String(c.baseUrl ?? "").trim().replace(/\/+$/, "").slice(0, 300),
+      baseUrl: baseUrl || detectado?.baseUrl || "",
     };
   } catch {
     return null;

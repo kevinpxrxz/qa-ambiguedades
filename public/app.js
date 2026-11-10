@@ -13,7 +13,44 @@ const estado = {
 };
 
 const CLAVE_CONFIG = "qa_amb_config";
-const NOMBRES_IA = { gemini: "Gemini", anthropic: "Claude", openai: "OpenAI compatible" };
+const NOMBRES_IA = { gemini: "Gemini", anthropic: "Claude", openai: "Compatible con OpenAI" };
+
+// ---------------------------------------------------------------- Detección de IA por API key
+// La persona solo pega la clave; el proveedor sale de su prefijo.
+const REGLAS_IA = [
+  { prueba: /^AIza/, proveedor: "gemini", nombre: "Gemini (Google)" },
+  { prueba: /^sk-ant-/, proveedor: "anthropic", nombre: "Claude (Anthropic)" },
+  { prueba: /^sk-or-v1-/, proveedor: "openai", nombre: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
+  { prueba: /^gsk_/, proveedor: "openai", nombre: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
+  { prueba: /^xai-/, proveedor: "openai", nombre: "xAI", baseUrl: "https://api.x.ai/v1" },
+  { prueba: /^sk-(?:proj|svcacct|admin)-/, proveedor: "openai", nombre: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { prueba: /^sk-/, proveedor: "openai", nombre: "Compatible con OpenAI", baseUrl: "https://api.openai.com/v1" },
+];
+const NOMBRES_BASE_IA = [
+  [/opencode\.ai/i, "OpenCode"],
+  [/deepseek\.com/i, "DeepSeek"],
+  [/openrouter\.ai/i, "OpenRouter"],
+  [/groq\.com/i, "Groq"],
+  [/mistral\.ai/i, "Mistral"],
+  [/api\.x\.ai/i, "xAI"],
+  [/localhost|127\.0\.0\.1/i, "Local (Ollama/LM Studio)"],
+];
+
+function detectarProveedorIA(apiKey, baseUrl = "") {
+  const clave = String(apiKey ?? "").trim();
+  if (!clave) return null;
+  const base = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+  const regla = REGLAS_IA.find((r) => r.prueba.test(clave));
+  // Una Base URL propia convierte una clave desconocida en un proveedor compatible con OpenAI.
+  const proveedor = regla?.proveedor ?? (base ? "openai" : null);
+  if (!proveedor) return null;
+  const url = proveedor === "openai" ? base || regla?.baseUrl || "" : "";
+  return {
+    proveedor,
+    nombre: NOMBRES_BASE_IA.find(([patron]) => patron.test(url))?.[1] || regla?.nombre || "Compatible con OpenAI",
+    baseUrl: url,
+  };
+}
 
 function leerConfig() {
   try {
@@ -32,8 +69,16 @@ function cabeceras() {
   const c = leerConfig();
   const h = {};
   if (c.azurePat) h["X-Azure-Pat"] = c.azurePat;
-  if (c.ia?.proveedor && c.ia?.apiKey) {
-    const bytes = new TextEncoder().encode(JSON.stringify(c.ia));
+  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) : null;
+  const proveedor = detectado?.proveedor || c.ia?.proveedor || "";
+  if (c.ia?.apiKey && proveedor) {
+    const ia = {
+      ...c.ia,
+      proveedor,
+      nombre: detectado?.nombre || c.ia.nombre || "",
+      baseUrl: c.ia.baseUrl || detectado?.baseUrl || "",
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(ia));
     let bin = "";
     for (const b of bytes) bin += String.fromCharCode(b);
     h["X-IA-Config"] = btoa(bin);
@@ -81,12 +126,14 @@ function pintarEstados() {
   const az = estado.config?.azure;
   const ia = estado.config?.ia;
   const azOk = Boolean(c.azurePat) || Boolean(az?.configurado);
-  const iaOk = Boolean(c.ia?.apiKey) || Boolean(ia?.configurado);
+  const detectado = c.ia?.apiKey ? detectarProveedorIA(c.ia.apiKey, c.ia.baseUrl) : null;
+  const iaOk = Boolean((c.ia?.apiKey && (detectado || c.ia?.proveedor)) || ia?.configurado);
+  const nombreIA = detectado?.nombre || c.ia?.nombre || NOMBRES_IA[c.ia?.proveedor] || ia?.proveedor;
   const azEl = $("#estadoAzure");
   azEl.textContent = azOk ? `Azure · ${c.azurePat ? "PAT del navegador" : az?.proyecto || "OK"}` : "Azure sin configurar";
   azEl.className = `chip ${azOk ? "ok" : "mal"}`;
   const iaEl = $("#estadoIA");
-  iaEl.textContent = iaOk ? `IA · ${c.ia?.proveedor ? NOMBRES_IA[c.ia.proveedor] ?? c.ia.proveedor : ia?.proveedor}` : "IA sin configurar";
+  iaEl.textContent = iaOk ? `IA · ${nombreIA || "configurada"}` : "IA sin configurar";
   iaEl.className = `chip ${iaOk ? "ok" : "mal"}`;
   if (!azOk) mostrarError("Falta configurar Azure DevOps: use ⚙ Configuración o el archivo .env.");
   else if (!iaOk) mostrarError("Falta configurar la IA: use ⚙ Configuración o el archivo .env.");
@@ -97,10 +144,10 @@ function pintarEstados() {
 function abrirConfig() {
   const c = leerConfig();
   const ia = c.ia ?? {};
-  $("#iaProveedor").value = ia.proveedor || estado.config?.ia?.proveedorId || "gemini";
   $("#iaApiKey").value = ia.apiKey ?? "";
   $("#iaModelo").value = ia.modelo ?? "";
   $("#iaBaseUrl").value = ia.baseUrl ?? "";
+  actualizarDeteccionIA();
   $("#azPat").value = c.azurePat ?? "";
   $("#azureActual").textContent = estado.config?.azure
     ? `Organización: ${estado.config.azure.url || "—"} · Proyecto: ${estado.config.azure.proyecto || "—"}`
@@ -119,17 +166,46 @@ function errorConfig(texto) {
   el.hidden = !texto;
 }
 
+/** Muestra en vivo qué proveedor se detecta con la clave y la Base URL escritas. */
+function actualizarDeteccionIA() {
+  const el = $("#iaProveedorDetectado");
+  const apiKey = $("#iaApiKey").value.trim();
+  if (!apiKey) {
+    el.textContent = "El proveedor se detecta automáticamente al pegar la clave.";
+    el.classList.remove("ok");
+    return;
+  }
+  const detectado = detectarProveedorIA(apiKey, $("#iaBaseUrl").value);
+  if (!detectado) {
+    el.textContent = "No se reconoce esta clave. Si es de un servicio compatible con OpenAI, indique su Base URL.";
+    el.classList.remove("ok");
+    return;
+  }
+  el.textContent = `Proveedor detectado: ${detectado.nombre}`;
+  el.classList.add("ok");
+}
+
 function guardarConfigForm(e) {
   e.preventDefault();
-  const ia = {
-    proveedor: $("#iaProveedor").value,
-    apiKey: $("#iaApiKey").value.trim(),
-    modelo: $("#iaModelo").value.trim(),
-    baseUrl: $("#iaBaseUrl").value.trim(),
-  };
+  const apiKey = $("#iaApiKey").value.trim();
+  const modelo = $("#iaModelo").value.trim();
+  const baseUrl = $("#iaBaseUrl").value.trim();
+  const detectado = detectarProveedorIA(apiKey, baseUrl);
+  const previa = leerConfig().ia ?? {};
+  const mismaClave = apiKey === (previa.apiKey ?? "");
   const azurePat = $("#azPat").value.trim();
-  if (!ia.apiKey && !estado.config?.ia?.configurado) return errorConfig("Indique la API key de la IA.");
+  if (!apiKey && !estado.config?.ia?.configurado) return errorConfig("Indique la API key de la IA.");
+  if (apiKey && !detectado && !(previa.proveedor && mismaClave)) {
+    return errorConfig("No se reconoce el proveedor de esa API key. Revise la clave o indique la Base URL.");
+  }
   if (!azurePat && !estado.config?.azure?.configurado) return errorConfig("Indique el PAT de Azure DevOps.");
+  const ia = {
+    proveedor: detectado?.proveedor || (mismaClave ? previa.proveedor : "") || "",
+    apiKey,
+    modelo,
+    baseUrl: baseUrl || detectado?.baseUrl || "",
+    nombre: detectado?.nombre || "",
+  };
   guardarConfig({ ia, azurePat });
   cerrarConfig();
   iniciar().then(() => toast("Configuración guardada"));
@@ -560,5 +636,7 @@ $("#btnConfig").addEventListener("click", abrirConfig);
 document.querySelectorAll("[data-cerrar-config]").forEach((el) => el.addEventListener("click", cerrarConfig));
 $("#formConfig").addEventListener("submit", guardarConfigForm);
 $("#btnOlvidar").addEventListener("click", olvidarConfig);
+$("#iaApiKey").addEventListener("input", actualizarDeteccionIA);
+$("#iaBaseUrl").addEventListener("input", actualizarDeteccionIA);
 
 iniciar();
